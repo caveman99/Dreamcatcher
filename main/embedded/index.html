@@ -5,6 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Dreamcatcher V4 | Othernet</title>
         <link rel="stylesheet" href="app.css">
+        <script src="tone.js"></script>
         <script src="app.js"></script>
         <script src="myip.js"></script>
     </head>
@@ -35,6 +36,7 @@
                         <a onclick="toggleModal('md_wifiap')" class="navbar-item">Wifi AP</a>
                         <a onclick="toggleModal('md_wificlient')"class="navbar-item">Wifi Client</a>
                         <a onclick="toggleModal('md_receiver')"class="navbar-item">Receiver</a>
+                        <a onclick="toggleModal('md_dcss')"class="navbar-item">DCSS</a>
                     </div>
                 </div>
             </div>
@@ -124,6 +126,45 @@
                         </div>
                         <div class="control">
                             <button onclick="toggleModal('md_wificlient')" class="button is-dark">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="md_dcss" class="modal">
+            <div class="modal-background"></div>
+            <div class="modal-content">
+                <div class="box">
+                    <h3 class="subtitle">Wifi Client<span id="tag_saveDcss" class="tag is-success is-pulled-right is-hidden">Settings Saved</span></h3>
+                    <div class="field">
+                        <label class="label">UB channel</label>
+                        <div class="control">
+                            <input id="dcss_ub" class="input" type="number" name="ub">
+                        </div>
+                    </div>
+                    
+                    <div class="field">
+                        <label class="label">Polarity</label>
+                        <div class="control">
+                            <input id="H" class="radio" type="radio" name="dcss_pol" checked><label> Horizontal</label><br>
+                            <input id="V" class="radio" type="radio" name="dcss_pol"><label> Vertical</label>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Frequency</label>
+                        <div class="control">
+                            <input id="dcss_freq" class="input" type="number" name="freq">
+                        </div>
+                    </div>
+                    
+                    <div class="field is-grouped pt-4">
+                        <div class="control">
+                            <button onclick="sendDCSS()" class="button is-link">Save</button>
+                        </div>
+                        <div class="control">
+                            <button onclick="toggleModal('md_dcss')" class="button is-dark">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -335,14 +376,22 @@
                             <p>Header Errors<span id="stats_header" class="is-pulled-right">-</span></p>
                         </div>
                     </div>
-                  <div class="column is-3">
-                    <div class="notification">
-                        <h3 class="subtitle has-text-grey has-text-weight-semibold">File info</h3>
-                        <p>Name<span id="stats_file" class="is-pulled-right">-</span></p>
-                        <p>Progress<span id="stats_progress" class="is-pulled-right">-</span></p>
+                    <div class="column is-3">
+                        <div class="notification">
+                            <h3 class="subtitle has-text-grey has-text-weight-semibold">Realtime</h3>
+                            <button id="btn_play" onclick="toggleMidiStream()" class="button">Play</button>
+                            <br>
+                            <input type="range" id="volume" min="0" max="10" value="6">
+                            <p id="voltext">-12</p>
+                        </div>
                     </div>
-                </div>
-              
+                    <div class="column is-6">
+                        <div class="notification">
+                            <h3 class="subtitle has-text-grey has-text-weight-semibold">File info</h3>
+                            <p>Name<span id="stats_file" class="is-pulled-right">-</span></p>
+                            <p>Progress<span id="stats_progress" class="is-pulled-right">-</span></p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>

@@ -40,6 +40,8 @@
 extern void storeWifiCredsAP(char* ssid, char* pass);
 extern void storeWifiCredsSTA(char* ssid, char* pass);
 extern void updateLoraSettings(uint32_t freq, uint8_t bw, uint8_t sf, uint8_t cr);
+extern void getMidi(char* _txtarray);
+
 
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[]   asm("_binary_index_html_end");
@@ -47,6 +49,8 @@ extern const char app_js_start[] asm("_binary_app_js_start");
 extern const char app_js_end[]   asm("_binary_app_js_end");
 extern const char app_css_start[] asm("_binary_app_css_gz_start");
 extern const char app_css_end[]   asm("_binary_app_css_gz_end");
+extern const char tone_js_start[] asm("_binary_tone_js_gz_start");
+extern const char tone_js_end[]   asm("_binary_tone_js_gz_end");
 
 /* Max length a file path can have on storage */
 #define FILE_PATH_MAX 255
@@ -68,6 +72,7 @@ struct web_server_data {
     char* scratch;
 };
 
+httpd_handle_t server = NULL;       //global webserver handle
 static const char *TAG = "web_server";
 static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filename);
 void getFreeStorageSPIFFS(uint64_t* total, uint64_t* used);
@@ -287,6 +292,13 @@ struct async_resp_arg {
     int fd;
 };
 
+struct midi_data {
+    uint8_t note;
+    float   start;
+    uint8_t velocity;
+    float   duration;
+};
+
 /**
  * json template to send statistics with websocket
  */
@@ -388,6 +400,10 @@ static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
  */
 static esp_err_t websocket_handler(httpd_req_t *req)
 {
+    if (req->method == HTTP_GET) {
+        ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+        return ESP_OK;
+    }
     uint8_t buf[128] = { 0 };
     httpd_ws_frame_t ws_pkt;
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
@@ -398,11 +414,30 @@ static esp_err_t websocket_handler(httpd_req_t *req)
         ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
         return ret;
     }
-    ESP_LOGD(TAG, "Got packet with message: %s", ws_pkt.payload);
+    ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
     ESP_LOGD(TAG, "Packet type: %d", ws_pkt.type);
-    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
-        strcmp((char*)ws_pkt.payload,"get stats") == 0) {
-        return trigger_async_send(req->handle, req);
+    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT){
+        if (strcmp((char*)ws_pkt.payload,"get stats") == 0)
+        {
+            return trigger_async_send(req->handle, req);
+        }
+        else if(strcmp((char*)ws_pkt.payload,"get midi") == 0){
+            //send last midi Data to client
+            char* pl = heap_caps_malloc(1500, MALLOC_CAP_SPIRAM);
+            ESP_LOGI(TAG, "Trying getMidi()");
+            getMidi(pl);
+            ESP_LOGI(TAG, "got Midi! %s", pl);
+            ws_pkt.payload = (uint8_t*)pl;
+            ws_pkt.len = strlen(pl);
+
+            ret = httpd_ws_send_frame(req, &ws_pkt);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+            }
+            free(pl);
+            return ret; 
+        }
+        
     }
 
     ret = httpd_ws_send_frame(req, &ws_pkt);
@@ -421,6 +456,7 @@ static esp_err_t index_handler(httpd_req_t *req)
 
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
+    ESP_LOGI(TAG, "loaded index");
     return ESP_OK;
 }
 
@@ -462,6 +498,17 @@ static esp_err_t appcss_handler(httpd_req_t *req)
     set_content_type_from_file(req, "app.css");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_send_chunk(req, app_css_start, app_css_end - app_css_start);
+
+    /* Respond with an empty chunk to signal HTTP response completion */
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+static esp_err_t tonejs_handler(httpd_req_t *req)
+{
+    set_content_type_from_file(req, "tone.js");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_send_chunk(req, tone_js_start, tone_js_end - tone_js_start);
 
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
@@ -527,7 +574,7 @@ static esp_err_t settings_handler(httpd_req_t *req)
     char* loid = strstr(content, "loid=");
     uLOid = atoi(loid + 5);
 
-    uint32_t _freq = strtoul( freq + 5, &bw, 0);
+    uint32_t _freq = strtoul( freq + 5, &freq, 0);
     int _bw = atoi(bw + 4);
     int _sf = atoi(sf + 3);
     int _cr = atoi(cr + 3);
@@ -540,6 +587,49 @@ static esp_err_t settings_handler(httpd_req_t *req)
     enable22kHz(bDiseq);
     enableLO(bLO, uLOid);
     updateLoraSettings(_freq, _bw, _sf, _cr);
+
+    /* Respond with an empty chunk to signal HTTP response completion */
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+/**
+ * Set dCSS, EN5xxx
+ */
+extern uint32_t prepareODU(char* ub, char* freq, char* p);
+extern void sendODUchannel(uint32_t _v);
+
+static esp_err_t en5xxx_handler(httpd_req_t *req)
+{
+    char content[500] = {0};
+
+    /* Truncate if content length larger than the buffer */
+    size_t len = MIN(req->content_len, sizeof(content));
+
+    int ret = httpd_req_recv(req, content, len);
+    if (ret <= 0) {  /* 0 return value indicates connection closed */
+        /* Check if timeout occurred */
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "%s", __func__);
+
+        char* data[4] = {};
+        uint8_t n = 0;
+        char *ptr = strtok(content, "&");
+        while(ptr != NULL)
+        {
+            data[n++] = ptr;
+            printf("%s\n", ptr);
+            ptr = strtok(NULL, "&");
+        }
+        data[len] = 0x0;
+    uint32_t val = prepareODU(data[0] + 3, data[2] + 5, data[1] + 4);
+    ESP_LOGI(TAG, "freq: %s, UB: %s, POL: %s, VAL: %d", data[2] + 5, data[0] + 3, data[1] + 4, val);
+    
+    sendODUchannel(val);
 
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
@@ -691,7 +781,7 @@ void web_server()
     strlcpy(server_data->base_path, VFS_MOUNT,
             sizeof(server_data->base_path));
 
-    httpd_handle_t server = NULL;
+    //httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     /* Use the URI wildcard matching function in order to
@@ -700,7 +790,7 @@ void web_server()
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_open_sockets = 7;
     config.stack_size = 10 * 1024;
-    config.max_uri_handlers = 10;
+    config.max_uri_handlers = 16;
 
     ESP_LOGI(TAG, "Starting HTTP Server");
     if (httpd_start(&server, &config) != ESP_OK) {
@@ -724,6 +814,14 @@ void web_server()
         .user_ctx  = server_data    // Pass server data as context
     };
     httpd_register_uri_handler(server, &app_js);
+
+    httpd_uri_t tone_js = {
+        .uri       = "/tone.js",  // Match all URIs of type /path/to/file
+        .method    = HTTP_GET,
+        .handler   = tonejs_handler,
+        .user_ctx  = server_data    // Pass server data as context
+    };
+    httpd_register_uri_handler(server, &tone_js);
 
     /* URI handler for getting this device IP as js file to pass to websocket (workaround) */
     httpd_uri_t myip_js = {
@@ -792,4 +890,12 @@ void web_server()
         .user_ctx  = server_data    // Pass server data as context
     };
     httpd_register_uri_handler(server, &settings);
+
+    httpd_uri_t en5xxx = {
+        .uri       = "/dcss",
+        .method    = HTTP_POST,
+        .handler   = en5xxx_handler,
+        .user_ctx  = server_data    // Pass server data as context
+    };
+    httpd_register_uri_handler(server, &en5xxx);    
 }
