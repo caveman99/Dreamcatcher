@@ -47,6 +47,7 @@ extern AsyncUDP udp;
 
 void readMBR();
 esp_err_t initSDcard();
+bool logToFile(char *logText);
 esp_err_t initSPIFFS();
 void testStuff();
 void initLR1110();
@@ -63,6 +64,8 @@ IRAM_ATTR void rxTxISR();
 
 void lrSendData();
 
+void clearLogs();
+
 void loadSettings();
 void storeLoraSettings();
 void storeWifiCredsAP(char* ssid, char* pass);
@@ -72,6 +75,7 @@ uint16_t countBitrate(uint16_t update);
 float countPktrate(uint16_t update);
 void vTaskGetRunTimeStats2();
 void setDefaults();
+void rebootDevice();
 extern xQueueHandle rxQueue;
 
 #ifdef __cplusplus

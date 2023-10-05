@@ -63,7 +63,10 @@ void loop()
     pktrate = countPktrate(bitrateUpdate);
     Serial.print("Uptime: ");
     Serial.println(millis()/1000);
-    
+
+    char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+    sprintf(newLogEntry,"Uptime: %lus", millis()/1000);
+    logToFile(newLogEntry);
     //Serial.print("Loop on Core: ");
     //Serial.println (xPortGetCoreID());
     //heap_caps_print_heap_info(MALLOC_CAP_INTERNAL | MALLOC_CAP_32BIT | MALLOC_CAP_8BIT);
@@ -76,16 +79,23 @@ void loop()
     if (bEnableTlm)
     {
       Serial.println("Sending Telemetry to Othernet Server...");
+      char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+      sprintf(newLogEntry,"Sending Telemetry to Othernet backend, Uptime: %lus", millis()/1000);
+      logToFile(newLogEntry);
       //send_telemetry();
       xSemaphoreGive(send_tlm);
     }
   }
   // reboot every 6h to avoid errors (21600000UL)
-  if (millis() >= 21600000UL)
+  if (millis() >= 3600000UL)
   {
     Serial.println("---------------------------------------");
     Serial.println("Doing Restart to avoid errors...");
     Serial.println("---------------------------------------");
+    char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+    sprintf(newLogEntry,"Restarting ESP to avoid Bugs, Uptime: %lus", millis()/1000);
+    logToFile(newLogEntry);
+    
     ESP.restart();
   }
   
@@ -113,6 +123,18 @@ void setup()
 
   Serial.print("Ram size: ");
   Serial.println(heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+
+  Serial.println("SD Cards next");
+  sdCardPresent = true;
+  if(initSDcard() != ESP_OK) {
+    sdCardPresent = false;
+
+    Serial.println("NO SD Card, trying SPIFFS");
+   /*if(initSPIFFS() != ESP_OK) {
+      log_e("error to init sd card and spiffs storage");
+      Serial.println("Error on SPIFFS Init");
+    }*/
+  }
 
   // enable RF section
   gpio_reset_pin((gpio_num_t)RF_PWR);
@@ -145,18 +167,6 @@ void setup()
 
   send_tlm = xSemaphoreCreateBinary();
   xTaskCreate(&send_telemetry, "telemetry", 8 * 1024,NULL,5,NULL);
-
-  Serial.println("SD Cards next");
-  sdCardPresent = true;
-  if(initSDcard() != ESP_OK) {
-    sdCardPresent = false;
-
-    Serial.println("NO SD Card, trying SPIFFS");
-   /*if(initSPIFFS() != ESP_OK) {
-      log_e("error to init sd card and spiffs storage");
-      Serial.println("Error on SPIFFS Init");
-    }*/
-  }
   
   if(bWire) enableLNB(); // enable VLNB
   //enable22kHz(bEnableDiseq);   // switch LNB to high band if needed

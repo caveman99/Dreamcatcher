@@ -236,6 +236,27 @@ function updateStats(jsnStats) {
     document.getElementById('stats_lnbcon').innerText = (jsnStats.ldo&0x02)>0?'YES':'NO';
     document.getElementById('stats_lnbv').innerText = jsnStats.volt;
     document.getElementById('stats_offset').innerText = jsnStats.offset;    
+    
+    document.getElementById('stats_time').innerText = jsnStats.tstamp;    
+}
+
+// Receiver Preset/Increment Freq functions
+function setReceiverPresetUS() {
+    document.getElementById('rcv_freq').value = 2308100000;
+}
+
+function setReceiverPresetEU() {
+    document.getElementById('rcv_freq').value = 1907000000;
+}
+
+function setReceiverAddTick() {
+    var freq = parseInt(document.getElementById('rcv_freq').value);
+    document.getElementById('rcv_freq').value = freq + 10000;
+}
+
+function setReceiverRemoveTick() {
+    var freq = parseInt(document.getElementById('rcv_freq').value);
+    document.getElementById('rcv_freq').value = freq - 10000;
 }
 
 // save Reeiver Settings
@@ -363,6 +384,43 @@ function formatSd() {
         http.send();
     }
 }
+
+//Remove Logfiles
+function clearLogs() {
+    if(confirm("Do you want to Clear all Logfiles?")){
+        document.getElementById('btn_clearlogs').classList.add('is-loading');
+        const http = new XMLHttpRequest();
+        var url = '/clearlogs';
+        http.open("POST", url, true);
+        
+        http.onreadystatechange = function() {//Call a function when the state changes.
+            if(http.readyState == 4 && http.status == 200) {
+                console.log('log cleared', http.responseText);
+            }
+            document.getElementById('btn_clearlogs').classList.remove('is-loading');
+        }
+        http.send();
+    }
+}
+
+//Remove Logfiles
+function reboot() {
+    if(confirm("Do you want to Reboot the Device?")){
+        document.getElementById('btn_reboot').classList.add('is-loading');
+        const http = new XMLHttpRequest();
+        var url = '/reboot';
+        http.open("POST", url, true);
+        
+        http.onreadystatechange = function() {//Call a function when the state changes.
+            if(http.readyState == 4 && http.status == 200) {
+                console.log('rebooting Device', http.responseText);
+            }
+            document.getElementById('btn_reboot').classList.remove('is-loading');
+        }
+        http.send();
+    }
+}
+
 //Factory Reset
 function factoryReset() {
     if(confirm("Do you want to reset the device to factory defaults?\nAll your settings will be lost!\nFiles on the SD card will be preserved.")){

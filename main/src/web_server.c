@@ -331,7 +331,8 @@ static const char ws_json[] = \
 \"used\":\"%llu\",\
 \"max\":\"%llu\",\
 \"filepath\":\"%s\",\
-\"filename\":\"%s\"}";
+\"filename\":\"%s\",\
+\"tstamp\":\"%s\"}";
 
 /*
  * async send function, which we put into the httpd work queue
@@ -358,6 +359,14 @@ static void ws_async_send(void *arg)
     getStats(&crc, &header);
     getPacketStats(&rssi, &snr);
 
+    //get timestamp over local device time
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    char *tstamp = (char*) heap_caps_malloc(64, MALLOC_CAP_SPIRAM);
+    sprintf(tstamp,"%02d.%02d.%d - %02d:%02d:%02d", timeinfo.tm_mday, timeinfo.tm_mon+1, timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
     struct async_resp_arg *resp_arg = arg;
     httpd_handle_t hd = resp_arg->hd;
     int fd = resp_arg->fd;
@@ -383,7 +392,8 @@ static void ws_async_send(void *arg)
         used_space,
         max_space,
         "path",
-        filename
+        filename,
+        tstamp
     );
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
     ws_pkt.payload = (uint8_t*)data;
@@ -540,6 +550,19 @@ static esp_err_t format_card_handler(httpd_req_t *req)
 }
 
 /**
+ * Function to trigger Logfile Cleanup
+ * 
+ */
+void clearLogs();
+static esp_err_t clear_logs_handler(httpd_req_t *req)
+{
+    clearLogs();
+    /* Respond with an empty chunk to signal HTTP response completion */
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+/**
  * Function to factory reset device
  */
 esp_err_t setDefaults();
@@ -547,6 +570,19 @@ static esp_err_t factory_reset_handler(httpd_req_t *req)
 {
     vTaskDelay(1000);
     setDefaults();
+    /* Respond with an empty chunk to signal HTTP response completion */
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+/**
+ * Function to reboot the device
+ */
+void rebootDevice();
+static esp_err_t reboot_handler(httpd_req_t *req)
+{
+    vTaskDelay(1000);
+    rebootDevice();
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
@@ -886,6 +922,22 @@ void web_server()
         .user_ctx  = server_data    // Pass server data as context
     };
     httpd_register_uri_handler(server, &format);
+
+    httpd_uri_t clear_logs = {
+        .uri       = "/clearlogs",
+        .method    = HTTP_POST,
+        .handler   = clear_logs_handler,
+        .user_ctx  = server_data    // Pass server data as context
+    };
+    httpd_register_uri_handler(server, &clear_logs);
+
+    httpd_uri_t reboot = {
+        .uri       = "/reboot",
+        .method    = HTTP_POST,
+        .handler   = reboot_handler,
+        .user_ctx  = server_data    // Pass server data as context
+    };
+    httpd_register_uri_handler(server, &reboot);
     
         httpd_uri_t freset = {
         .uri       = "/freset",

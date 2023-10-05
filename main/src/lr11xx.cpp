@@ -80,11 +80,11 @@ void init_gpio(void) {
 
   //pinMode(BUZ_PIN, OUTPUT);
 
-  
+  /*
   ledcSetup(0, 5000, 8);
   ledcAttachPin(BUZ_PIN, 0);
 
-  /*
+  
   ledcWriteNote(0, NOTE_C, 4);
   delay(500);
   ledcWrite(0, 127);
@@ -111,8 +111,8 @@ void init_gpio(void) {
   delay(500);
   ledcWriteNote(0, NOTE_B, 4);
   delay(500);
-  */
-  //ledcDetachPin(BUZ_PIN);
+  
+  ledcDetachPin(BUZ_PIN);*/
 
 };
 
@@ -136,10 +136,10 @@ void blinky(void *pvParameter)
         if( xSemaphoreTake( blink_rx, portMAX_DELAY ) == pdTRUE )
         {
           gpio_set_level((gpio_num_t)LED_PIN, 1);
-          //gpio_set_level((gpio_num_t)BUZ_PIN, 1);
+          gpio_set_level((gpio_num_t)BUZ_PIN, 1);
           vTaskDelay(10 / portTICK_RATE_MS); // sleep 100ms
           gpio_set_level((gpio_num_t)LED_PIN, 0);
-          //gpio_set_level((gpio_num_t)BUZ_PIN, 0);
+          gpio_set_level((gpio_num_t)BUZ_PIN, 0);
         }
     }
 }
@@ -181,11 +181,19 @@ class mycallback : public carousel::callback {
     Serial.println("--- File Complete ---");
     Serial.printf("new file path: %s\n", path.c_str());
     strcpy(filename, path.c_str());
+
+    char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+    sprintf(newLogEntry,"File Complete:  %s", path.c_str());
+    logToFile(newLogEntry);
   }
 	void processFile(unsigned int index, unsigned int count) {
     Serial.printf("file progress: %d of %d bytes\n", index, count);
     filepacket = index;
     filepackets = count;
+
+    char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+    sprintf(newLogEntry,"file progress: %d of %d bytes", index, count);
+    logToFile(newLogEntry);    
   }
 };
 
@@ -216,6 +224,10 @@ IRAM_ATTR void busyIRQ()
  */
 void initLR11xx()
 {
+  char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+  sprintf(newLogEntry,"initialization of Radio - LR11xx, Uptime: %lus", millis()/1000);
+  logToFile(newLogEntry);
+
   init_gpio();
 
   lr11xx_system_stat1_t lrStat1;
@@ -366,6 +378,10 @@ void getLR11xxInfo()
 
 extern "C" void updateLoraSettings(uint32_t freq, uint8_t bw, uint8_t sf, uint8_t cr)
 {
+  char *newLogEntry = (char*) heap_caps_malloc(512, MALLOC_CAP_SPIRAM);
+  sprintf(newLogEntry,"Updating Radio Settings and restarting it, Uptime: %lus", millis()/1000);
+  logToFile(newLogEntry);
+  
   Frequency = freq;
   SpreadingFactor = sf;
   Bandwidth = bw;
@@ -479,10 +495,13 @@ void rxTaskLR11xx(void* p)
 
         RXPacketL = readbufferlr11xx(data, RXBUFFER_SIZE);
 
+        // to avoid missing packets set radi back to RX before processing
+        lr11xx_radio_set_rx( &lrRadio, 0);
+
         //Serial.printf("RX Buffer (len: %i): \n", RXPacketL);
         //Serial.println((char*)data);
 
-        //udp.writeTo(data, RXPacketL, IPAddress(192,168,0,164), 8280);
+        //udp.writeTo(data, RXPacketL, IPAddress(192,168,0,174), 8280);
 
         //xTaskCreate(&blinky, "blinky", 1024,NULL,5,NULL);
         xSemaphoreGive(blink_rx);
@@ -527,6 +546,7 @@ void rxTaskLR11xx(void* p)
         }
       
         if(RXPacketL > 0) {
+          //Serial.printf("RX Payload Size: %02x %02x %02x %02x %02x %02x %02x %02x\n", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
           //Serial.println("Consume data check");
           if (!isFormatting) {            // stop consuming data during sd card formatting to not access card
             if (!sdCardPresent)
@@ -558,7 +578,7 @@ void rxTaskLR11xx(void* p)
         Serial.println("LR11XX_SYSTEM_IRQ_PREAMBLE_DETECTED");
       }*/
 
-      lr11xx_radio_set_rx( &lrRadio, 0);
+      //lr11xx_radio_set_rx( &lrRadio, 0);
       //Serial.println("Set Radio back to RX");
     }
   }
